@@ -447,15 +447,34 @@ function Wire_Remove(ent, DontUnList)
 	WireLib._RemoveWire(ent:EntIndex()) -- Remove entity from the list, so it doesn't count as a wire able entity anymore. Very important for IsWire checks!
 end
 
+local wirelinkID = 0
 
 local function Wire_Link(dst, dstid, src, srcid, path)
+
 	if (!IsValid(dst) or !HasPorts(dst) or !dst.Inputs or !dst.Inputs[dstid]) then
 		Msg("Wire_link: Invalid destination!\n")
-		return
+		return false
 	end
 	if (!IsValid(src) or !HasPorts(src) or !src.Outputs or !src.Outputs[srcid]) then
 		Msg("Wire_link: Invalid source!\n")
-		return
+		return false
+	end
+
+	local creationID = wirelinkID
+	wirelinkID = wirelinkID + 1
+
+	local Constraint = {
+		Type = "Wire",
+		IsValid = function() return true end,
+		GetTable = function(self) return self end,
+		GetCreationID = function(self) return "wire" .. creationID end,
+		Entity = { src, dst }, dst = dst, dstid = dstid, src = srcid, path = path 
+	}
+	constraint.AddConstraintTableNoDelete( src, Constraint, dst )
+
+	for _, v in ipairs(path) do
+		table.insert( Constraint.Entity, v.Entity )
+		constraint.AddConstraintTableNoDelete( v.Entity, Constraint )
 	end
 
 	local input = dst.Inputs[dstid]
@@ -493,7 +512,10 @@ local function Wire_Link(dst, dstid, src, srcid, path)
 	end
 
 	WireLib.TriggerInput(dst, dstid, output.Value)
+
+	return Constraint
 end
+duplicator.RegisterConstraint( "Wire", Wire_Link, "dst", "dstid", "src", "srcid", "path" )
 
 function Wire_TriggerOutput(ent, oname, value, iter)
 	if !IsValid(ent) then return end
